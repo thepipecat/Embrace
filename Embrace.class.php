@@ -242,6 +242,7 @@ class Embrace
     $analise = $content;
     
     $init = -1;
+    $last_end = 0;
     
     while (($init = strpos($analise, $delimiter_open)) !== FALSE)
     {
@@ -276,10 +277,10 @@ class Embrace
       $tag = str_slice($analise, $init, $end);
       
       $tag_info = array (
-        'init' => $init,      // Required info for analysis.
-        'end'  => $end,       // Required info for analysis.
-        'tag'  => $tag_open,  // Required info for analysis.
-        'full' => $tag        // Required info for analysis.
+        'init'   => ($init + $last_end),
+        'length' => strlen($tag),
+        'tag'    => $tag_open,
+        'full'   => $tag
       );
       
       if (!empty($tag_args))
@@ -293,6 +294,8 @@ class Embrace
       $found[] = $tag_info;
       
       $analise = substr($analise, $end);
+      
+      $last_end += $end;
     }
     
     return $found;
@@ -341,24 +344,58 @@ class Embrace
         
         if (is_array($found_info) || is_object($found_info))
         {
-          if (!empty($tag_info->inner))
+          $found_info = (object) $found_info;
+          
+          $var_count = count($tag);
+          
+          for ($i = 0; $i < $var_count; $i++)
           {
+            $var = $tag[$i];
             
-          }
-          else
-          {
-            $found_info = (object) $found_info;
-
-            foreach ($tag as $var)
+            $found_info = $found_info->{$var};
+            
+            if (!empty($found_info))
             {
-              $found_info = $found_info->{$var};
-
-              if ((is_array($found_info) || is_object($found_info)) === FALSE)
+              if (($i + 1) < $var_count)
+                continue;
+              
+              if (!empty($tag_info->inner))
               {
-                $info = $found_info;
-                
-                break;
+                if (is_array($found_info) || is_object($found_info))
+                {
+                  $index = 0;
+                  
+                  foreach ($found_info as $name => $value)
+                  {
+                    $info .= str_ireplace(array (
+                      '[[index]]',
+                      '[[name]]',
+                      '[[value]]'
+                    ), array (
+                      $index,
+                      $name,
+                      $value
+                    ), $tag_info->inner);
+                    
+                    $index++;
+                  }
+                }
               }
+              else
+              {
+                if ((is_array($found_info) || is_object($found_info)) === FALSE)
+                {
+                  $info = $found_info;
+
+                  break;
+                }
+              }
+            }
+            else
+            {
+              $info = '(not found)';
+              
+              break;
             }
           }
         }
@@ -412,11 +449,36 @@ class Embrace
     
     $embrace_found = $this->grab($content);
     
-    print '<pre>';
-    print_r($embrace_found);
-    print '</pre>';
+    $compiled = $content;
     
-    $compiled = '';
+    $diff = 0;
+    
+    foreach ($embrace_found as $embraced)
+    {
+      $replace = $embraced['replace'];
+      
+      if (!empty($embraced['args']))
+      {
+        foreach ($embraced['args'] as $arg)
+        {
+          if (function_exists($arg))
+            $replace = call_user_func($arg, $replace);
+          else
+          {
+            
+          }
+        }
+      }
+      
+      $length = $embraced['length'];
+      $init = $embraced['init'] + $diff;
+      
+      $compiled = substr_replace($compiled, $replace, $init, $length);
+      
+      $diff += strlen($replace) - $length;
+    }
+    
+//    print_r($embrace_found);
     
     return $compiled;
   }
