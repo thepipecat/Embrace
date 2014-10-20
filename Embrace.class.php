@@ -51,6 +51,8 @@ class Embrace
   protected static $cache_prepend = '';
   protected static $cache_append  = '.embraced';
   
+  public static $debug = TRUE;
+  
 //------------------------------------------------------------------------------
 // Static methods:
 //------------------------------------------------------------------------------
@@ -228,6 +230,10 @@ class Embrace
   {
     $found = array ();
     
+    $ctrl_chars = array (
+      '$', '#', '!'
+    );
+    
     if (empty($content) || !is_string($content))
       return $found;
     
@@ -261,7 +267,7 @@ class Embrace
 //------------------------------------------------------------------------------
 // Verify if has close tag.
 //------------------------------------------------------------------------------
-      $close_init = strpos($analise, $delimiter_open . '/' . $tag_open, $end);
+      $close_init = strpos($analise, $delimiter_open . '/' . str_replace($ctrl_chars, '', $tag_open), $end);
       
       $tag_inner = NULL;
       
@@ -289,7 +295,7 @@ class Embrace
       if (!empty($tag_inner))
         $tag_info['inner'] = $tag_inner;
       
-      $tag_info['replace'] = $this->analise($tag_info);
+      $tag_info['replace'] = $this->analise($tag_info, $context);
       
       $found[] = $tag_info;
       
@@ -316,7 +322,7 @@ class Embrace
    */
   protected function analise ($tag_info, &$context = NULL)
   {
-    if (empty($tag_info) || !is_array($tag_info))
+    if (empty($tag_info) || (!is_object($tag_info) && !is_array($tag_info)))
       return NULL;
     
     if (is_array($tag_info))
@@ -391,9 +397,9 @@ class Embrace
                 }
               }
             }
-            else
+            elseif (static::$debug)
             {
-              $info = '(not found)';
+              $info = __('(not found)');
               
               break;
             }
@@ -411,11 +417,41 @@ class Embrace
 //------------------------------------------------------------------------------
 // Methods analise:
 //------------------------------------------------------------------------------
+          $call = str_replace($control_char, '', $tag_info->tag);
+          
+          if (function_exists($call))
+          {
+            $info = call_user_func_array($call, array (
+              $tag_info->inner, $tag_info->tag
+            ));
+          }
+          
           break;
         case '!':
 //------------------------------------------------------------------------------
 // Condidional analise:
 //------------------------------------------------------------------------------
+          if (empty($tag_info->inner))
+            break;
+          
+          $ref_tag_info = clone ( $tag_info );
+          
+          $ref_tag_info->tag = str_replace($control_char, '', $ref_tag_info->tag);
+          unset ($ref_tag_info->inner);
+          
+          $_debug = static::$debug;
+          
+          static::$debug = FALSE;
+          
+          $found_info = $this->analise($ref_tag_info, $context);
+          
+          static::$debug = $_debug;
+          
+          if (empty($found_info))
+            $info = $tag_info->inner;
+          else
+            $info = $found_info;
+          
           break;
       }
     }
@@ -463,12 +499,13 @@ class Embrace
         {
           if (function_exists($arg))
             $replace = call_user_func($arg, $replace);
-          else
-          {
-            
-          }
+          elseif (static::$debug)
+            $replace = __('(undefined function)');
         }
       }
+      
+      if (!empty($replace))
+        $replace = $this->compile($replace, $context);
       
       $length = $embraced['length'];
       $init = $embraced['init'] + $diff;
@@ -477,8 +514,6 @@ class Embrace
       
       $diff += strlen($replace) - $length;
     }
-    
-//    print_r($embrace_found);
     
     return $compiled;
   }
