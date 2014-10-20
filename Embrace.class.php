@@ -340,7 +340,7 @@ class Embrace
 //------------------------------------------------------------------------------
 // Variable analises:
 //------------------------------------------------------------------------------
-      $tag = explode(self::ATTRIBUTE_SEPARATOR, str_replace('$', '', $tag_info->tag));
+      $tag = explode(self::ATTRIBUTE_SEPARATOR, ($control_char === '$' ? str_replace($tag_info->tag, 1) : $tag_info->tag));
       
       if (isset($context->{$tag[0]}))
       {
@@ -417,7 +417,7 @@ class Embrace
 //------------------------------------------------------------------------------
 // Methods analise:
 //------------------------------------------------------------------------------
-          $call = str_replace($control_char, '', $tag_info->tag);
+          $call = substr($tag_info->tag, 1);
           
           if (function_exists($call))
           {
@@ -436,7 +436,16 @@ class Embrace
           
           $ref_tag_info = clone ( $tag_info );
           
-          $ref_tag_info->tag = str_replace($control_char, '', $ref_tag_info->tag);
+          $ref_tag_info->tag = substr($ref_tag_info->tag, 1);
+          
+          $inverse_logical = FALSE;
+          
+          if ($ref_tag_info->tag[0] === '!')
+          {
+            $inverse_logical = TRUE;
+            $ref_tag_info->tag = substr($ref_tag_info->tag, 1);
+          }
+          
           unset ($ref_tag_info->inner);
           
           $_debug = static::$debug;
@@ -447,10 +456,11 @@ class Embrace
           
           static::$debug = $_debug;
           
-          if (empty($found_info))
+          if ((!$inverse_logical && empty($found_info)) ||
+              ($inverse_logical && !empty($found_info)))
             $info = $tag_info->inner;
           else
-            $info = $found_info;
+            $info = '';
           
           break;
       }
