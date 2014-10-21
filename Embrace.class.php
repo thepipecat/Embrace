@@ -47,9 +47,9 @@ class Embrace
 // Static variables:
 //------------------------------------------------------------------------------
   
-  protected static $cache = FALSE;
-  protected static $cache_prepend = '';
-  protected static $cache_append  = '.embraced';
+  protected static $cache = TRUE;
+  protected static $cache_prepend = '~';
+  protected static $cache_append  = '.html';
   
   public static $debug = TRUE;
   
@@ -621,6 +621,9 @@ class Embrace
     
     if ((static::$cache && !$renew && $this->cached()) === FALSE)
       $this->compiled = $this->compile();
+    
+    if (static::$cache)
+      $this->cache();
     
     return $this->compiled;
   }
