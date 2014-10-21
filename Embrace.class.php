@@ -283,19 +283,21 @@ class Embrace
       $tag = str_slice($analise, $init, $end);
       
       $tag_info = array (
-        'init'   => ($init + $last_end),
-        'length' => strlen($tag),
-        'tag'    => $tag_open,
-        'full'   => $tag
+        'init'    => ($init + $last_end),
+        'length'  => strlen($tag),
+        'tag'     => $tag_open,
+        'full'    => $tag,
+        'inner'   => rtrim($tag_inner),
+        'replace' => ''
       );
       
       if (!empty($tag_args))
         $tag_info['args'] = $tag_args;
       
-      if (!empty($tag_inner))
-        $tag_info['inner'] = $tag_inner;
-      
-      $tag_info['replace'] = $this->analise($tag_info, $context);
+      if (strtolower($tag_info['tag']) === 'literal')
+        $tag_info['literal'] = $tag_info['inner'];
+      else
+        $tag_info['replace'] = $this->analise($tag_info, $context);
       
       $found[] = $tag_info;
       
@@ -335,12 +337,28 @@ class Embrace
     
     $control_char = $tag_info->tag[0];
     
+    if (strtolower($tag_info->tag) === 'php')
+    {
+      if (empty($tag_info->inner))
+        return $info;
+      
+      ob_start();
+      
+      eval ($tag_info->inner);
+      
+      $info = ob_get_clean();
+      
+      return $info;
+    }
+    
     if (ctype_alpha($control_char) || $control_char === '$')
     {
 //------------------------------------------------------------------------------
 // Variable analises:
 //------------------------------------------------------------------------------
-      $tag = explode(self::ATTRIBUTE_SEPARATOR, ($control_char === '$' ? str_replace($tag_info->tag, 1) : $tag_info->tag));
+      $tag = explode(self::ATTRIBUTE_SEPARATOR, ($control_char === '$' ?
+                                                 str_replace($tag_info->tag, 1) :
+                                                 $tag_info->tag));
       
       if (isset($context->{$tag[0]}))
       {
@@ -370,18 +388,18 @@ class Embrace
                 if (is_array($found_info) || is_object($found_info))
                 {
                   $index = 0;
+                  $total = count($found_info);
                   
                   foreach ($found_info as $name => $value)
                   {
-                    $info .= str_ireplace(array (
-                      '[[index]]',
-                      '[[name]]',
-                      '[[value]]'
-                    ), array (
-                      $index,
-                      $name,
-                      $value
-                    ), $tag_info->inner);
+                    $inner_context = clone ($context);
+                    
+                    $inner_context->index = $index;
+                    $inner_context->name  = $name;
+                    $inner_context->value = $value;
+                    $inner_context->last  = ($index + 1 >= $total) ? 1 : 0;
+                    
+                    $info .= $this->compile($tag_info->inner, $inner_context);
                     
                     $index++;
                   }
@@ -476,13 +494,13 @@ class Embrace
    * @param object $context
    * @return string
    */
-  protected function compile ($content = NULL, $context = NULL)
+  protected function compile ($content = NULL, &$context = NULL)
   {
     if (empty($content) && empty($this->file))
       return NULL;
     
     if (empty($context))
-      $context = $this;
+      $context = &$this;
     
     if (empty($content))
     {
@@ -493,7 +511,7 @@ class Embrace
       $content = ob_get_clean();
     }
     
-    $embrace_found = $this->grab($content);
+    $embrace_found = $this->grab($content, $context);
     
     $compiled = $content;
     
@@ -516,6 +534,8 @@ class Embrace
       
       if (!empty($replace))
         $replace = $this->compile($replace, $context);
+      elseif (!empty($embraced['literal']))
+        $replace = $embraced['literal'];
       
       $length = $embraced['length'];
       $init = $embraced['init'] + $diff;
