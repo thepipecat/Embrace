@@ -287,7 +287,7 @@ class Embrace
         'length'  => strlen($tag),
         'tag'     => $tag_open,
         'full'    => $tag,
-        'inner'   => rtrim($tag_inner),
+        'inner'   => preg_replace('/^[\n\r]+|[\n\r]+$/', '', $tag_inner),
         'replace' => ''
       );
       
