@@ -51,7 +51,7 @@ class Embrace
   protected static $cache_prepend = '~';
   protected static $cache_append  = '.html';
   
-  public static $debug = TRUE;
+  public static $debug = FALSE;
   
 //------------------------------------------------------------------------------
 // Static methods:
@@ -80,7 +80,10 @@ class Embrace
   private $delimiter = '[[,]]';
   private $file = NULL;
   private $compiled = NULL;
+  private $cached = NULL;
   private $cache_life = 86400; // Defaults ONE day
+  
+  private $parent = NULL;
   
   private $data = array ();
   private $call = array ();
@@ -101,7 +104,7 @@ class Embrace
     unset ($this->call);
   }
   
-  public function __get ($name)
+  public function &__get ($name)
   {
     if (isset($this->data[$name]))
       return $this->data[$name];
@@ -113,7 +116,13 @@ class Embrace
   
   public function __set ($name, $value)
   {
-    if (is_callable($value))
+    if ($value instanceof \Embrace)
+    {
+      $value->setParent($this);
+      
+      $this->data[$name] = &$value;
+    }
+    elseif (is_callable($value))
       $this->call[$name] = $value;
     else
       $this->data[$name] = $value;
@@ -123,10 +132,18 @@ class Embrace
   {
     if (isset($this->data[$name]))
       return TRUE;
-    if (isset($this->call[$name]))
+    elseif (isset($this->call[$name]))
       return TRUE;
     
     return FALSE;
+  }
+  
+  public function __unset($name)
+  {
+    if (isset($this->data[$name]))
+      unset ($this->data[$name]);
+    elseif (isset($this->call[$name]))
+      unset ($this->call[$name]);
   }
   
   public function __invoke()
@@ -191,7 +208,7 @@ class Embrace
   }
   
   /**
-   * Return cache life.
+   * Return cache file life time.
    * 
    * @return int
    */
@@ -201,7 +218,7 @@ class Embrace
   }
   
   /**
-   * Define cache life.
+   * Define cache file life time.
    * 
    * @param int $seconds
    * @return boolean
@@ -217,6 +234,30 @@ class Embrace
     $this->cache_life = $seconds;
     
     return TRUE;
+  }
+  
+  /**
+   * Return Embrace parent.
+   * 
+   * @return \Embrace
+   */
+  public function &parent ()
+  {
+    return $this->parent;
+  }
+  
+  /**
+   * Define an Embrace parent.
+   * 
+   * @param \Embrace $parent
+   * @throws \Exception
+   */
+  public function setParent (&$parent)
+  {
+    if (! ($parent instanceof \Embrace))
+      throw new \Exception(__('Parent is not a valid Embrace instance.'));
+    
+    $this->parent = &$parent;
   }
   
   /**
@@ -294,10 +335,19 @@ class Embrace
       if (!empty($tag_args))
         $tag_info['args'] = $tag_args;
       
-      if (strtolower($tag_info['tag']) === 'literal')
+      $tag_lower = strtolower($tag_info['tag']);
+      
+      if ($tag_lower === 'literal')
         $tag_info['literal'] = $tag_info['inner'];
       else
         $tag_info['replace'] = $this->analise($tag_info, $context);
+      
+      if ($tag_lower === 'include')
+        $tag_info['cache'] = $tag_info['tag'];
+      else
+        $tag_info['cache'] = $tag_info['replace'];
+      
+      unset ($tag_lower);
       
       $found[] = $tag_info;
       
@@ -322,7 +372,7 @@ class Embrace
    * @param object $context
    * @return string
    */
-  protected function analise ($tag_info, &$context = NULL)
+  public function analise ($tag_info, &$context = NULL)
   {
     if (empty($tag_info) || (!is_object($tag_info) && !is_array($tag_info)))
       return NULL;
@@ -334,6 +384,14 @@ class Embrace
       $context = &$this;
     
     $info = '';
+    
+    if (!empty($this->parent))
+    {
+      $info = $this->parent->analise($tag_info);
+      
+      if (!empty($info))
+        return $info;
+    }
     
     $control_char = $tag_info->tag[0];
     
@@ -407,12 +465,16 @@ class Embrace
               }
               else
               {
-                if ((is_array($found_info) || is_object($found_info)) === FALSE)
+                if (!(is_array($found_info) || is_object($found_info)))
+                  $info = &$found_info;
+                elseif ($found_info instanceof \Embrace)
                 {
-                  $info = $found_info;
-
-                  break;
+                  $found_info->setParent($this);
+                  
+                  $info = &$found_info;
                 }
+
+                break;
               }
             }
             elseif (static::$debug)
@@ -484,6 +546,9 @@ class Embrace
       }
     }
     
+    if ($info instanceof \Embrace)
+      $info = $info->render();
+    
     return $info;
   }
   
@@ -492,9 +557,10 @@ class Embrace
    * 
    * @param string $content
    * @param object $context
+   * @param string $tocache
    * @return string
    */
-  protected function compile ($content = NULL, &$context = NULL)
+  protected function compile ($content = NULL, &$context = NULL, &$tocache = NULL)
   {
     if (empty($content) && empty($this->file))
       return NULL;
@@ -513,9 +579,13 @@ class Embrace
     
     $embrace_found = $this->grab($content, $context);
     
+    if (isset($tocache))
+      $tocache = '' . $content;
+    
     $compiled = $content;
     
     $diff = 0;
+    $cache_diff = 0;
     
     foreach ($embrace_found as $embraced)
     {
@@ -539,6 +609,16 @@ class Embrace
       
       $length = $embraced['length'];
       $init = $embraced['init'] + $diff;
+      
+      if (isset($tocache) && is_string($tocache))
+      {
+        $cache = $embraced['cache'];
+        $cache_init = $embraced['init'] + $cache_diff;
+        
+        $tocache = substr_replace($tocache, $cache, $cache_init, $length);
+
+        $cache_diff += strlen($cache) - $length;
+      }
       
       $compiled = substr_replace($compiled, $replace, $init, $length);
       
@@ -577,7 +657,7 @@ class Embrace
       return FALSE;
     }
     
-    $this->compiled = file_get_contents($cache_file);
+    $this->cached = file_get_contents($cache_file);
     
     return TRUE;
   }
@@ -590,7 +670,7 @@ class Embrace
    */
   protected function cache ()
   {
-    if (empty($this->compiled))
+    if (empty($this->cached))
       return FALSE;
     
     $file_dir  = dirname($this->file);
@@ -601,7 +681,7 @@ class Embrace
     if (!is_writable($file_dir))
       throw new \Exception(sprintf(__('Cache directory "%s" is not writeable.'), $file_dir));
     
-    return file_put_contents($cache_file, $this->compiled, LOCK_EX) === FALSE ? FALSE : TRUE;
+    return file_put_contents($cache_file, $this->cached, LOCK_EX) === FALSE ? FALSE : TRUE;
   }
   
   /**
@@ -620,10 +700,14 @@ class Embrace
       return $this->compiled;
     
     if ((static::$cache && !$renew && $this->cached()) === FALSE)
+    {
       $this->compiled = $this->compile();
-    
-    if (static::$cache)
-      $this->cache();
+      
+      if (static::$cache)
+        $this->cache();
+    }
+    else
+      $this->compiled = $this->compile($this->cached, $this);
     
     return $this->compiled;
   }
