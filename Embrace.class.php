@@ -753,9 +753,12 @@ class Embrace
       return FALSE;
     
     $file_dir  = dirname($this->file);
-    $file_name = basename($this->file);
+    $file_name = basename($this->file, '.php');
     
     $cache_file = $file_dir . DS . static::$cache_prepend . $file_name . static::$cache_append;
+    
+    unset ($file_name);
+    unset ($file_dir);
     
     if (!file_exists($cache_file))
       return FALSE;
@@ -767,10 +770,14 @@ class Embrace
     {
       unlink($cache_file);
       
+      unset ($cache_file);
+      
       return FALSE;
     }
     
     $this->cached = file_get_contents($cache_file);
+
+    unset ($cache_file);
     
     return TRUE;
   }
