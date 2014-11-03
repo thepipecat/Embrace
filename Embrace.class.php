@@ -47,7 +47,7 @@ class Embrace
 // Static variables:
 //------------------------------------------------------------------------------
   
-  protected static $cache = TRUE;
+  protected static $global_cache  = TRUE;
   protected static $cache_prepend = '~';
   protected static $cache_append  = '.html';
   
@@ -62,7 +62,7 @@ class Embrace
    */
   public static function enableCache ()
   {
-    static::$cache = TRUE;
+    static::$global_cache = TRUE;
   }
   
   /**
@@ -70,13 +70,23 @@ class Embrace
    */
   public static function disableCache ()
   {
-    static::$cache = FALSE;
+    static::$global_cache = FALSE;
+  }
+  
+  /**
+   * Verify is cache is globaly enabled.
+   * 
+   * @return bool
+   */
+  public static function isCacheEnabled ()
+  {
+    return static::$global_cache;
   }
   
 //------------------------------------------------------------------------------
 // Instance variables:
 //------------------------------------------------------------------------------
-  
+// -- Private
   private $delimiter = '[[,]]';
   private $file = NULL;
   private $compiled = NULL;
@@ -87,6 +97,9 @@ class Embrace
   
   private $data = array ();
   private $call = array ();
+  
+// -- Public
+  private $cache = TRUE;
   
 //------------------------------------------------------------------------------
 // Instance magic methods:
@@ -237,7 +250,18 @@ class Embrace
   }
   
   /**
-   * Return Embrace parent.
+   * Define parent \Embrace cache police.
+   * 
+   * @param bool $value
+   */
+  private function setParentCache ($value)
+  {
+    if (!empty($this->parent) && is_bool($value))
+      $this->parent->setCache($value);
+  }
+  
+  /**
+   * Return \Embrace parent.
    * 
    * @return \Embrace
    */
@@ -247,12 +271,12 @@ class Embrace
   }
   
   /**
-   * Define an Embrace parent.
+   * Define an \Embrace parent.
    * 
    * @param \Embrace $parent
    * @throws \Exception
    */
-  public function setParent (&$parent)
+  public function setParent (\Embrace &$parent)
   {
     if (! ($parent instanceof \Embrace))
       throw new \Exception(__('Parent is not a valid Embrace instance.'));
@@ -328,7 +352,7 @@ class Embrace
         'length'  => strlen($tag),
         'tag'     => $tag_open,
         'full'    => $tag,
-        'inner'   => preg_replace('/^[\n\r]+|[\n\r]+$/', '', $tag_inner),
+        'inner'   => preg_replace('/[\s]+$/', '', $tag_inner),
         'replace' => ''
       );
       
@@ -343,7 +367,7 @@ class Embrace
         $tag_info['replace'] = $this->analise($tag_info, $context);
       
       if ($tag_lower === 'include')
-        $tag_info['cache'] = $tag_info['tag'];
+        $tag_info['cache'] = $tag_info['full'];
       else
         $tag_info['cache'] = $tag_info['replace'];
       
@@ -393,9 +417,48 @@ class Embrace
         return $info;
     }
     
+    $tag_n = strtolower($tag_info->tag);
+    
     $control_char = $tag_info->tag[0];
     
-    if (strtolower($tag_info->tag) === 'php')
+    if ($tag_n === 'include')
+    {
+      if (empty($tag_info->args))
+        throw new \Exception(__('Include file is missing.'));
+      
+      $embrace_file = $tag_info->args[0];
+      
+      if (!empty($this->file))
+        $embrace_file = dirname($this->file) . DS . $embrace_file;
+      
+      if (strpos(basename($embrace_file), '.') === FALSE)
+        $embrace_file .= '.php';
+      
+      $embrace_file_n = realpath($embrace_file);
+      
+      if ($embrace_file_n === FALSE)
+        throw new \Exception(sprintf(__('Template path "%s" is invalid.'), $embrace_file));
+      
+      unset ($embrace_file);
+      
+      if (!file_exists($embrace_file_n))
+        throw new \Exception(sprintf(__('Template file "%s" not found.'), $embrace_file_n));
+      
+      $embrace = new \Embrace($embrace_file_n);
+      
+      $embrace->setParent($this);
+      $embrace->setCache(!in_array('no-cache', $tag_info->args));
+      
+      unset ($embrace_file_n);
+      
+      $info = $embrace->render();
+      
+      unset ($embrace);
+      
+      return $info;
+    }
+    
+    if ($tag_n === 'php')
     {
       if (empty($tag_info->inner))
         return $info;
@@ -430,60 +493,81 @@ class Embrace
           
           $var_count = count($tag);
           
-          for ($i = 0; $i < $var_count; $i++)
+          $me = &$this;
+          
+          $__process_var = function & (&$info, &$context) use ($tag_info, $me)
           {
-            $var = $tag[$i];
-            
-            $found_info = $found_info->{$var};
-            
-            if (!empty($found_info))
+            if (!empty($info))
             {
-              if (($i + 1) < $var_count)
-                continue;
-              
               if (!empty($tag_info->inner))
               {
-                if (is_array($found_info) || is_object($found_info))
+                if (is_array($info) || is_object($info))
                 {
                   $index = 0;
-                  $total = count($found_info);
+                  $total = count($info);
                   
-                  foreach ($found_info as $name => $value)
+                  $return = '';
+
+                  foreach ($info as $name => $value)
                   {
                     $inner_context = clone ($context);
-                    
+
                     $inner_context->index = $index;
                     $inner_context->name  = $name;
                     $inner_context->value = $value;
                     $inner_context->last  = ($index + 1 >= $total) ? 1 : 0;
-                    
-                    $info .= $this->compile($tag_info->inner, $inner_context);
-                    
+
+                    $return .= $me->compile($tag_info->inner, $inner_context);
+
                     $index++;
                   }
+                  
+                  return $return;
+                }
+                else
+                {
+                  return $me->compile($tag_info->inner, $context);
                 }
               }
               else
               {
-                if (!(is_array($found_info) || is_object($found_info)))
-                  $info = &$found_info;
-                elseif ($found_info instanceof \Embrace)
+                if (!(is_array($info) || is_object($info)))
+                  return $info;
+                elseif ($info instanceof \Embrace)
                 {
-                  $found_info->setParent($this);
-                  
-                  $info = &$found_info;
-                }
+                  $info->setParent($me);
 
-                break;
+                  return $info;
+                }
               }
             }
             elseif (static::$debug)
+              return __('(not found)');
+          };
+          
+          if ($var_count < 1)
+          {
+            $info = $__process_var($found_info, $context);
+          }
+          else
+          {
+            for ($i = 0; $i < $var_count; $i++)
             {
-              $info = __('(not found)');
+              $var = $tag[$i];
+
+              $found_info = $found_info->{$var};
               
-              break;
+              if (!empty($found_info) && ($i + 1) < $var_count)
+                continue;
+              
+              $info = $__process_var($found_info, $context);
+              
+              if (!empty($info))
+                break;
             }
           }
+          
+          unset ($__process_var);
         }
         else
           $info = $found_info;
@@ -549,7 +633,7 @@ class Embrace
     if ($info instanceof \Embrace)
       $info = $info->render();
     
-    return $info;
+    return preg_replace('/^[\n\r]+|[\s]+$/', '', $info);
   }
   
   /**
@@ -560,7 +644,7 @@ class Embrace
    * @param string $tocache
    * @return string
    */
-  protected function compile ($content = NULL, &$context = NULL, &$tocache = NULL)
+  public function compile ($content = NULL, &$context = NULL, &$tocache = NULL)
   {
     if (empty($content) && empty($this->file))
       return NULL;
@@ -629,6 +713,32 @@ class Embrace
   }
   
   /**
+   * Define cache instance police.
+   * 
+   * @param bool $value
+   */
+  public function setCache ($value)
+  {
+    if (is_bool($value))
+    {
+      $this->cache = $value;
+      
+      if (!empty($this->parent) && $value === FALSE)
+        $this->parent->setCache(FALSE);
+    }
+  }
+  
+  /**
+   * Return cache instance police.
+   * 
+   * @return bool
+   */
+  public function cache ()
+  {
+    return $this->cache;
+  }
+  
+  /**
    * Verify if has cached content.
    * 
    * @return boolean
@@ -636,6 +746,9 @@ class Embrace
    */
   protected function cached ()
   {
+    if (!$this->cache)
+      return FALSE;
+    
     if (empty($this->file))
       return FALSE;
     
@@ -665,23 +778,34 @@ class Embrace
   /**
    * Cache compiled content.
    * 
+   * @param string $cache_content
    * @return boolean
    * @throws \Exception
    */
-  protected function cache ()
+  protected function cacheCreate ($cache_content = NULL)
   {
-    if (empty($this->cached))
+    if (!$this->cache)
       return FALSE;
     
+    if (empty($this->compiled))
+      return FALSE;
+    
+    if (empty($cache_content))
+      $cache_content = $this->compiled;
+    
     $file_dir  = dirname($this->file);
-    $file_name = basename($this->file);
+    $file_name = basename($this->file, '.php');
     
     $cache_file = $file_dir . DS . static::$cache_prepend . $file_name . static::$cache_append;
+    
+    unset ($file_name);
     
     if (!is_writable($file_dir))
       throw new \Exception(sprintf(__('Cache directory "%s" is not writeable.'), $file_dir));
     
-    return file_put_contents($cache_file, $this->cached, LOCK_EX) === FALSE ? FALSE : TRUE;
+    unset ($file_dir);
+    
+    return file_put_contents($cache_file, $cache_content, LOCK_EX) === FALSE ? FALSE : TRUE;
   }
   
   /**
@@ -699,12 +823,15 @@ class Embrace
     if (!$renew && !empty($this->compiled))
       return $this->compiled;
     
-    if ((static::$cache && !$renew && $this->cached()) === FALSE)
+    if ((static::$global_cache && !$renew && $this->cached()) === FALSE)
     {
-      $this->compiled = $this->compile();
+      $to_cache = '';
       
-      if (static::$cache)
-        $this->cache();
+      $this->compiled = $this->compile(NULL, $this, $to_cache);
+      
+      // Global and local "do cache" check.
+      if (static::$global_cache && $this->cache)
+        $this->cacheCreate($to_cache);
     }
     else
       $this->compiled = $this->compile($this->cached, $this);
