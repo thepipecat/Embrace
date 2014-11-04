@@ -7,8 +7,9 @@ simple and fast as resourceful enough to support a
 
 ## License
 
-**Embrace** is under the open source MIT License (MIT). See *COPY* for more
-information.
+**Embrace** is under the open source MIT License (MIT).
+
+See ./*COPY* for more information.
 
 ## Requires
 
@@ -17,28 +18,33 @@ information.
 ## Usage
 
 In your logical file, e.g. *index.php*:
-`require_once 'Embrace.class.php';
+~~~~
+require_once 'Embrace.class.php';
 
 $embraced = new Embrace('template.php');
 
 $embraced->foo = 'Hello world!';
 
-$embrace(); // short hand for Embrace->render()`
+$embrace(); // short hand for Embrace->render()
+~~~~
 
 In your template file, e.g. *template.php*:
-`*<quote>*
-I have some to say to you:*<br />*
-<strong>**[[foo]]**</strong>
-*</quote>*`
+~~~~
+<quote>
+I have some to say to you:<br />
+<strong>**[[foo]]**</strong> <!-- could be [[$foo]] too! -->
+</quote>
+~~~~
 
 Will output:
 > I have some to say to you:
+> 
 > **Hello world!**
 
 ## Features
 
 1. General logical analysis (===, !==, <, >, <=, >=);
-2. Template hierarchy with parentage resolution `[[include:template.php]]`;
+2. Template hierarchy with parentage resolution `[[include:section.php]]`;
 3. Literal `[[literal]] [[render as is]] [[/literal]]`;
 4. PHP code interpretation `[[php]] print 'Embraced!'; [[/php]]`;
 5. Cache per file with hierarchy influence, e.g. *child with cache disabled
@@ -47,7 +53,7 @@ turns off parents cache*;
 
 ## Demo
 
-See *Embrace*/*demo* for some usage cases. **(soon)**
+See ./*Embrace*/*demo* for some usage cases. **(soon)**
 
 ## Benchmark
 
