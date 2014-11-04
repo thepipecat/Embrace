@@ -18,7 +18,7 @@ See ./*COPY* for more information.
 ## Usage
 
 In your logical file, e.g. *index.php*:
-~~~~
+~~~~ .php
 require_once 'Embrace.class.php';
 
 $embraced = new Embrace('template.php');
@@ -32,7 +32,7 @@ In your template file, e.g. *template.php*:
 ~~~~
 <quote>
 I have some to say to you:<br />
-<strong>**[[foo]]**</strong> <!-- could be [[$foo]] too! -->
+<strong>**[[$foo]]**</strong> <!-- could be [[foo]] also! -->
 </quote>
 ~~~~
 
