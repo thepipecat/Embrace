@@ -18,27 +18,28 @@ See ./*COPY* for more information.
 ## Usage
 
 In your logical file, e.g. *index.php*:
-:::php
-~~~~
+```
+#!php
+<?php
 require_once 'Embrace.class.php';
 
 $embraced = new Embrace('template.php');
 
 $embraced->foo = 'Hello world!';
 
-$embrace(); # Short hand for Embrace->render()
-~~~~
+$embraced(); # Short hand for Embrace->render()
+```
 
 In your template file, e.g. *template.php*:
-:::php
-~~~~
+```
+#!html
 <quote>
 I have some to say to you:<br />
 <strong>[[$foo]]</strong> <!-- Could be [[foo]] also! -->
 </quote>
-~~~~
+```
 
-Will output:
+Will generate cache file, e.g. *~template.html*, and output:
 > I have some to say to you:
 > 
 > **Hello world!**
