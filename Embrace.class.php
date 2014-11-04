@@ -39,19 +39,19 @@ class Embrace
 //------------------------------------------------------------------------------
   const VERSION = '1.0.0';
   
-  const DELIMITER_SEPARATOR = ',';
-  const ARGUMENTS_SEPARATOR = ':';
-  const ATTRIBUTE_SEPARATOR = '.';
+  const DELIMITER_SEPARATOR = ','; // Tag separator delimiter.
+  const ARGUMENTS_SEPARATOR = ':'; // Tag arguments separator.
+  const ATTRIBUTE_SEPARATOR = '.'; // Tag attributes inheritance separator.
   
 //------------------------------------------------------------------------------
 // Static variables:
 //------------------------------------------------------------------------------
   
-  protected static $global_cache  = TRUE;
-  protected static $cache_prepend = '~';
-  protected static $cache_append  = '.html';
+  protected static $global_cache  = TRUE;    // Global cache validation flag.
+  protected static $cache_prepend = '~';     // Cache file name prepend string.
+  protected static $cache_append  = '.html'; // Cache file name append string.
   
-  public static $debug = FALSE;
+  public static $debug = FALSE;              // On debug mode flag.
   
 //------------------------------------------------------------------------------
 // Static methods:
@@ -87,19 +87,19 @@ class Embrace
 // Instance variables:
 //------------------------------------------------------------------------------
 // -- Private
-  private $delimiter = '[[,]]';
-  private $file = NULL;
-  private $compiled = NULL;
-  private $cached = NULL;
-  private $cache_life = 86400; // Defaults ONE day
+  private $delimiter = '[[,]]'; // Delimiters used in template analysis.
+  private $file = NULL;         // Template file path.
+  private $compiled = NULL;     // Compiled content.
+  private $cached = NULL;       // Cache colected content.
+  private $cache_life = 86400;  // Defaults cache life to ONE day.
   
-  private $parent = NULL;
+  private $parent = NULL;       // Parent Embrace instance.
   
-  private $data = array ();
-  private $call = array ();
+  private $data = array ();     // Variable data pool.
+  private $call = array ();     // Functions callback pool.
   
 // -- Public
-  private $cache = TRUE;
+  private $cache = TRUE;        // Cache verify / create flag.
   
 //------------------------------------------------------------------------------
 // Instance magic methods:
@@ -326,6 +326,45 @@ class Embrace
       $tag_args = explode(self::ARGUMENTS_SEPARATOR, $analise_tag);
       
       $tag_open = array_shift($tag_args);
+      $tag_logical = NULL;
+      
+      // Verify if has logical analysis:
+      $logical_analysis = array (
+        ' === ' => 'EQ', // EQUAL
+        ' eq '  => 'EQ', // EQUAL
+        ' !== ' => 'NE', // NOT EQUAL
+        ' ne '  => 'NE', // NOT EQUAL
+        ' > '   => 'GT', // GREATER THAN
+        ' gt '  => 'GT', // GREATER THAN
+        ' < '   => 'LT', // LESS THAN
+        ' lt '  => 'LT', // LESS THAN
+        ' >= '  => 'GE', // GREATER THAN OR EQUAL TO
+        ' ge '  => 'GE', // GREATER THAN OR EQUAL TO
+        ' <= '  => 'LE', // LESS THAN OR EQUAL TO
+        ' le '  => 'LE', // LESS THAN OR EQUAL TO
+      );
+      
+      foreach ($logical_analysis as $logical => $operator)
+      {
+        if (strpos($tag_open, $logical) === FALSE)
+          continue;
+        
+        $tag_open_pieces = explode($logical, $tag_open);
+        
+        if (count($tag_open_pieces) != 2)
+          throw new \Exception(sprintf(__('Template logical tag "%s" must have two attributes.'), $tag_open));
+        
+        $tag_logical = array (
+          'operator' => $operator,
+          'than' => trim($tag_open_pieces[1])
+        );
+        
+        $tag_open = trim($tag_open_pieces[0]);
+        
+        unset($tag_open_pieces);
+        
+        break;
+      }
       
       $end += strlen($delimiter_close);
       
@@ -352,8 +391,9 @@ class Embrace
         'length'  => strlen($tag),
         'tag'     => $tag_open,
         'full'    => $tag,
-        'inner'   => preg_replace('/[\s]+$/', '', $tag_inner),
-        'replace' => ''
+        'inner'   => preg_replace('/[\s]+$/', '', $tag_inner), // Strip line end
+        'replace' => '',
+        'logical' => $tag_logical
       );
       
       if (!empty($tag_args))
@@ -424,7 +464,7 @@ class Embrace
     if ($tag_n === 'include')
     {
       if (empty($tag_info->args))
-        throw new \Exception(__('Include file is missing.'));
+        throw new \Exception(__('Include tag file attribute is missing.'));
       
       $embrace_file = $tag_info->args[0];
       
@@ -475,7 +515,7 @@ class Embrace
     if (ctype_alpha($control_char) || $control_char === '$')
     {
 //------------------------------------------------------------------------------
-// Variable analises:
+// Variable analysis:
 //------------------------------------------------------------------------------
       $tag = explode(self::ATTRIBUTE_SEPARATOR, ($control_char === '$' ?
                                                  str_replace($tag_info->tag, 1) :
@@ -497,6 +537,7 @@ class Embrace
           
           $__process_var = function & (&$info, &$context) use ($tag_info, $me)
           {
+            // $__process_var :: BEGIN
             if (!empty($info))
             {
               if (!empty($tag_info->inner))
@@ -543,6 +584,7 @@ class Embrace
             }
             elseif (static::$debug)
               return __('(not found)');
+            // $__process_var :: END
           };
           
           if ($var_count < 1)
@@ -571,6 +613,72 @@ class Embrace
         }
         else
           $info = $found_info;
+        
+        if (!empty($tag_info->logical) &&
+            isset($tag_info->logical['operator']) &&
+            isset($tag_info->logical['than']))
+        {
+          if ($info instanceof \Embrace)
+            throw new \Exception(__('Embrace class could not be used in logical comparison.'));
+          
+          if (!is_string($info) && !is_numeric($info))
+            throw new \Exception(__('Variable kind could not be used in logical comparison.'));
+          
+          $operator = $tag_info->logical['operator'];
+          $than     = &$tag_info->logical['than'];
+          
+          if (is_numeric($info))
+            $info = $info + 0;
+          
+          if (is_numeric($than))
+            $than = $than + 0;
+          
+          $logical_pass = FALSE;
+          
+          switch ($operator)
+          {
+            case 'EQ': // EQUAL
+            {
+              $logical_pass = ( $info === $than );
+              break;
+            }
+            case 'NQ': // NOT EQUAL
+            {
+              $logical_pass = ( $info !== $than );
+              break;
+            }
+            case 'GT': // GREATER THAN
+            {
+              $logical_pass = ( $info > $than );
+              break;
+            }
+            case 'LT': // LESS THAN
+            {
+              $logical_pass = ( $info < $than );
+              break;
+            }
+            case 'GE': // GREATER THAN OR EQUAL TO
+            {
+              $logical_pass = ( $info >= $than );
+              break;
+            }
+            case 'LE': // LESS THAN OR EQUAL TO
+            {
+              $logical_pass = ( $info <= $than );
+              break;
+            }
+          }
+          
+          if (!empty($tag_info->inner))
+          {
+            if ($logical_pass)
+              $info = $tag_info->inner;
+            else
+              $info = '';
+          }
+          else if (!$logical_pass)
+            $info = '';
+        }
       }
     }
     else
