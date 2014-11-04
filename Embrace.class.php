@@ -85,7 +85,7 @@ class Embrace
   /**
    * Verify is cache is globaly enabled.
    * 
-   * @return bool
+   * @return boolean
    */
   public static function isCacheEnabled ()
   {
@@ -138,7 +138,7 @@ class Embrace
   
   public function __set ($name, $value)
   {
-    if ($value instanceof \Embrace)
+    if ($value instanceof Embrace)
     {
       $value->setParent($this);
       
@@ -182,15 +182,15 @@ class Embrace
    * Load template file.
    * 
    * @param string $file
-   * @throws \Exception
+   * @throws Exception
    */
   public function load ($file)
   {
     if (!file_exists($file))
-      throw new \Exception(sprintf(__('Template file "%s" not exists.'), $file));
+      throw new Exception(sprintf(__('Template file "%s" not exists.'), $file));
     
     if (!is_readable($file))
-      throw new \Exception(sprintf(__('Template file "%s" is unreachable.'), $file));
+      throw new Exception(sprintf(__('Template file "%s" is unreachable.'), $file));
     
     $this->file = $file;
   }
@@ -209,20 +209,20 @@ class Embrace
    * Define embrace delimiters.
    * 
    * @param string $delimiters
-   * @throws \Exception
+   * @throws Exception
    */
   public function setDelimiter ($delimiters)
   {
     if (empty($delimiters))
-      throw new \Exception(__('No delimiter setted.'));
+      throw new Exception(__('No delimiter setted.'));
     
     if (!is_string($delimiters))
-      throw new \Exception(__('Invalid delimiter type.'));
+      throw new Exception(__('Invalid delimiter type.'));
     
     $delimiters_found = explode(self::DELIMITER_SEPARATOR, $delimiters);
     
     if (count($delimiters_found) !== 2)
-      throw new \Exception(__('Invalid delimiter count.'));
+      throw new Exception(__('Invalid delimiter count.'));
     
     array_walk($delimiters_found, 'trim');
     
@@ -259,9 +259,9 @@ class Embrace
   }
   
   /**
-   * Define parent \Embrace cache police.
+   * Define parent Embrace cache police.
    * 
-   * @param bool $value
+   * @param boolean $value
    */
   private function setParentCache ($value)
   {
@@ -270,9 +270,9 @@ class Embrace
   }
   
   /**
-   * Return \Embrace parent.
+   * Return Embrace parent.
    * 
-   * @return \Embrace
+   * @return Embrace
    */
   public function &parent ()
   {
@@ -280,15 +280,15 @@ class Embrace
   }
   
   /**
-   * Define an \Embrace parent.
+   * Define an Embrace parent.
    * 
-   * @param \Embrace $parent
-   * @throws \Exception
+   * @param Embrace $parent
+   * @throws Exception
    */
-  public function setParent (\Embrace &$parent)
+  public function setParent (Embrace &$parent)
   {
-    if (! ($parent instanceof \Embrace))
-      throw new \Exception(__('Parent is not a valid Embrace instance.'));
+    if (! ($parent instanceof Embrace))
+      throw new Exception(__('Parent is not a valid Embrace instance.'));
     
     $this->parent = &$parent;
   }
@@ -361,7 +361,7 @@ class Embrace
         $tag_open_pieces = explode($logical, $tag_open);
         
         if (count($tag_open_pieces) != 2)
-          throw new \Exception(sprintf(__('Template logical tag "%s" must have two attributes.'), $tag_open));
+          throw new Exception(sprintf(__('Template logical tag "%s" must have two attributes.'), $tag_open));
         
         $tag_logical = array (
           'operator' => $operator,
@@ -400,7 +400,7 @@ class Embrace
         'length'  => strlen($tag),
         'tag'     => $tag_open,
         'full'    => $tag,
-        'inner'   => preg_replace('/[\s]+$/', '', $tag_inner), // Strip line end
+        'inner'   => rtrim($tag_inner), // Strip line end
         'replace' => '',
         'logical' => $tag_logical
       );
@@ -473,7 +473,7 @@ class Embrace
     if ($tag_n === 'include')
     {
       if (empty($tag_info->args))
-        throw new \Exception(__('Include tag file attribute is missing.'));
+        throw new Exception(__('Include tag file attribute is missing.'));
       
       $embrace_file = $tag_info->args[0];
       
@@ -486,14 +486,14 @@ class Embrace
       $embrace_file_n = realpath($embrace_file);
       
       if ($embrace_file_n === FALSE)
-        throw new \Exception(sprintf(__('Template path "%s" is invalid.'), $embrace_file));
+        throw new Exception(sprintf(__('Template path "%s" is invalid.'), $embrace_file));
       
       unset ($embrace_file);
       
       if (!file_exists($embrace_file_n))
-        throw new \Exception(sprintf(__('Template file "%s" not found.'), $embrace_file_n));
+        throw new Exception(sprintf(__('Template file "%s" not found.'), $embrace_file_n));
       
-      $embrace = new \Embrace($embrace_file_n);
+      $embrace = new Embrace($embrace_file_n);
       
       $embrace->setParent($this);
       $embrace->setCache(!in_array('no-cache', $tag_info->args));
@@ -583,7 +583,7 @@ class Embrace
               {
                 if (!(is_array($info) || is_object($info)))
                   return $info;
-                elseif ($info instanceof \Embrace)
+                elseif ($info instanceof Embrace)
                 {
                   $info->setParent($me);
 
@@ -627,11 +627,11 @@ class Embrace
             isset($tag_info->logical['operator']) &&
             isset($tag_info->logical['than']))
         {
-          if ($info instanceof \Embrace)
-            throw new \Exception(__('Embrace class could not be used in logical comparison.'));
+          if ($info instanceof Embrace)
+            throw new Exception(__('Embrace class could not be used in logical comparison.'));
           
           if (!is_string($info) && !is_numeric($info))
-            throw new \Exception(__('Variable kind could not be used in logical comparison.'));
+            throw new Exception(__('Variable kind could not be used in logical comparison.'));
           
           $operator = $tag_info->logical['operator'];
           $than     = &$tag_info->logical['than'];
@@ -747,10 +747,16 @@ class Embrace
       }
     }
     
-    if ($info instanceof \Embrace)
+    if ($info instanceof Embrace)
       $info = $info->render();
     
-    return preg_replace('/^[\n\r]+|[\s]+$/', '', $info);
+    if (!empty($info))
+      $info = ltrim($info, '\n\r');
+    
+    if (!empty($info))
+      $info = rtrim($info);
+    
+    return $info;
   }
   
   /**
@@ -832,7 +838,7 @@ class Embrace
   /**
    * Define cache instance police.
    * 
-   * @param bool $value
+   * @param boolean $value
    */
   public function setCache ($value)
   {
@@ -848,7 +854,7 @@ class Embrace
   /**
    * Return cache instance police.
    * 
-   * @return bool
+   * @return boolean
    */
   public function cache ()
   {
@@ -859,7 +865,7 @@ class Embrace
    * Verify if has cached content.
    * 
    * @return boolean
-   * @throws \Exception
+   * @throws Exception
    */
   protected function cached ()
   {
@@ -881,7 +887,7 @@ class Embrace
       return FALSE;
     
     if (!is_readable($cache_file))
-      throw new \Exception(sprintf(__('Cache file "%s" is not readable.'), $cache_file));
+      throw new Exception(sprintf(__('Cache file "%s" is not readable.'), $cache_file));
     
     if ((filemtime($cache_file) + $this->cache_life) < time())
     {
@@ -904,7 +910,7 @@ class Embrace
    * 
    * @param string $cache_content
    * @return boolean
-   * @throws \Exception
+   * @throws Exception
    */
   protected function cacheCreate ($cache_content = NULL)
   {
@@ -925,7 +931,7 @@ class Embrace
     unset ($file_name);
     
     if (!is_writable($file_dir))
-      throw new \Exception(sprintf(__('Cache directory "%s" is not writeable.'), $file_dir));
+      throw new Exception(sprintf(__('Cache directory "%s" is not writeable.'), $file_dir));
     
     unset ($file_dir);
     
@@ -937,12 +943,12 @@ class Embrace
    * 
    * @param boolean $renew
    * @return string
-   * @throws \Exception
+   * @throws Exception
    */
   public function render ($renew = FALSE)
   {
     if (empty($this->file))
-      throw new \Exception(__('There is no template file to render.'));
+      throw new Exception(__('There is no template file to render.'));
     
     if (!$renew && !empty($this->compiled))
       return $this->compiled;
@@ -970,9 +976,51 @@ class Embrace
 
 if (!function_exists('ctype_alpha'))
 {
-  function ctype_alpha ($text)
+  /**
+   * Return de ASCII equivalent value for character.
+   * 
+   * @param string $c
+   * @return integer
+   */
+  function uniord ($c)
   {
-    return preg_match('/^[a-z]+$/i',$text);
+    $h = ord($c{0});
+    
+    if ($h <= 0x7F)
+      return $h;
+    else if ($h < 0xC2)
+      return FALSE;
+    else if ($h <= 0xDF)
+      return ($h & 0x1F) << 6 | (ord($c{1}) & 0x3F);
+    else if ($h <= 0xEF)
+      return ($h & 0x0F) << 12 | (ord($c{1}) & 0x3F) << 6 | (ord($c{2}) & 0x3F);
+    else if ($h <= 0xF4)
+      return ($h & 0x0F) << 18 | (ord($c{1}) & 0x3F) << 12 | (ord($c{2}) & 0x3F) << 6 | (ord($c{3}) & 0x3F);
+    else
+      return FALSE;
+  }
+
+  // This is a substitutive function behaves as if the input $text is in UTF-8.
+  function ctype_alpha ($string)
+  {
+    if (!is_string($string))
+      return FALSE;
+    
+    $string_len = strlen($string);
+    
+    if ($string_len < 1)
+      return FALSE;
+    
+    for ($c = 0; $c < $string_len; $c++)
+    {
+      $c_val = uniord($string{$c});
+      
+      if (!($c_val >= 0x41 && $c_val <= 0x5A) && // Upper case
+          !($c_val >= 0x61 && $c_val <= 0x7A))   // Lower case
+        return FALSE;
+    }
+    
+    return TRUE;
   }
 }
 
