@@ -3,11 +3,11 @@
 ## About
 
 `new Embrace()` is a personal study case for template engineering that could be
-simple and fast as resourceful enough to support a 
+simple and fast as resourceful enough to support a complex application.
 
 ## License
 
-**Embrace** is under the open source MIT License (MIT).
+**Embrace** is under the open source **MIT License (MIT)**.
 
 See ./*COPY* for more information.
 
@@ -18,21 +18,23 @@ See ./*COPY* for more information.
 ## Usage
 
 In your logical file, e.g. *index.php*:
-~~~~ .php
+:::php
+~~~~
 require_once 'Embrace.class.php';
 
 $embraced = new Embrace('template.php');
 
 $embraced->foo = 'Hello world!';
 
-$embrace(); // short hand for Embrace->render()
+$embrace(); # Short hand for Embrace->render()
 ~~~~
 
 In your template file, e.g. *template.php*:
+:::php
 ~~~~
 <quote>
 I have some to say to you:<br />
-<strong>**[[$foo]]**</strong> <!-- could be [[foo]] also! -->
+<strong>[[$foo]]</strong> <!-- Could be [[foo]] also! -->
 </quote>
 ~~~~
 
