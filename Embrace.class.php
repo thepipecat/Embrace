@@ -319,20 +319,20 @@ class Embrace
     $delimiter_open  = $delimiters[0];
     $delimiter_close = $delimiters[1];
     
-    $analise = $content;
+    $analyse = $content;
     
     $init = -1;
     $last_end = 0;
     
-    while (($init = strpos($analise, $delimiter_open)) !== FALSE)
+    while (($init = strpos($analyse, $delimiter_open)) !== FALSE)
     {
-      $end = strpos($analise, $delimiter_close, $init);
+      $end = strpos($analyse, $delimiter_close, $init);
       
       if ($end === FALSE)
         break;
       
-      $analise_tag = str_slice($analise, $init + strlen($delimiter_open), $end);
-      $tag_args = explode(self::ARGUMENTS_SEPARATOR, $analise_tag);
+      $analyse_tag = str_slice($analyse, $init + strlen($delimiter_open), $end);
+      $tag_args = explode(self::ARGUMENTS_SEPARATOR, $analyse_tag);
       
       $tag_open = array_shift($tag_args);
       $tag_logical = NULL;
@@ -380,20 +380,20 @@ class Embrace
 //------------------------------------------------------------------------------
 // Verify if has close tag.
 //------------------------------------------------------------------------------
-      $close_init = strpos($analise, $delimiter_open . '/' . str_replace($ctrl_chars, '', $tag_open), $end);
+      $close_init = strpos($analyse, $delimiter_open . '/' . str_replace($ctrl_chars, '', $tag_open), $end);
       
       $tag_inner = NULL;
       
       if ($close_init !== FALSE)
       {
-        $tag_inner = str_slice($analise, $end, $close_init);
+        $tag_inner = str_slice($analyse, $end, $close_init);
         
-        $close_end = strpos($analise, $delimiter_close, $close_init);
+        $close_end = strpos($analyse, $delimiter_close, $close_init);
         
         $end = $close_end + strlen($delimiter_close);
       }
       
-      $tag = str_slice($analise, $init, $end);
+      $tag = str_slice($analyse, $init, $end);
       
       $tag_info = array (
         'init'    => ($init + $last_end),
@@ -413,7 +413,7 @@ class Embrace
       if ($tag_lower === 'literal')
         $tag_info['literal'] = $tag_info['inner'];
       else
-        $tag_info['replace'] = $this->analise($tag_info, $context);
+        $tag_info['replace'] = $this->analyse($tag_info, $context);
       
       if ($tag_lower === 'include')
         $tag_info['cache'] = $tag_info['full'];
@@ -424,7 +424,7 @@ class Embrace
       
       $found[] = $tag_info;
       
-      $analise = substr($analise, $end);
+      $analyse = substr($analyse, $end);
       
       $last_end += $end;
     }
@@ -433,7 +433,7 @@ class Embrace
   }
   
   /**
-   * Analise tag and return relative context content.
+   * Analyse tag and return relative context content.
    * 
    * @param array|object $tag_info
    * - "init"  Initial integer position.
@@ -445,7 +445,7 @@ class Embrace
    * @param object $context
    * @return string
    */
-  public function analise ($tag_info, &$context = NULL)
+  public function analyse ($tag_info, &$context = NULL)
   {
     if (empty($tag_info) || (!is_object($tag_info) && !is_array($tag_info)))
       return NULL;
@@ -460,7 +460,7 @@ class Embrace
     
     if (!empty($this->parent))
     {
-      $info = $this->parent->analise($tag_info);
+      $info = $this->parent->analyse($tag_info);
       
       if (!empty($info))
         return $info;
@@ -470,6 +470,9 @@ class Embrace
     
     $control_char = $tag_info->tag[0];
     
+//------------------------------------------------------------------------------
+// [[include:{file}]]
+//------------------------------------------------------------------------------
     if ($tag_n === 'include')
     {
       if (empty($tag_info->args))
@@ -507,6 +510,9 @@ class Embrace
       return $info;
     }
     
+//------------------------------------------------------------------------------
+// [[php]]{code}[[/php]]
+//------------------------------------------------------------------------------
     if ($tag_n === 'php')
     {
       if (empty($tag_info->inner))
@@ -539,8 +545,6 @@ class Embrace
         if (is_array($found_info) || is_object($found_info))
         {
           $found_info = (object) $found_info;
-          
-          $var_count = count($tag);
           
           $me = &$this;
           
@@ -596,6 +600,8 @@ class Embrace
             // $__process_var :: END
           };
           
+          $var_count = count($tag);
+          
           if ($var_count < 1)
           {
             $info = $__process_var($found_info, $context);
@@ -605,7 +611,7 @@ class Embrace
             for ($i = 0; $i < $var_count; $i++)
             {
               $var = $tag[$i];
-
+              
               $found_info = $found_info->{$var};
               
               if (!empty($found_info) && ($i + 1) < $var_count)
@@ -696,7 +702,7 @@ class Embrace
       {
         case '#':
 //------------------------------------------------------------------------------
-// Methods analise:
+// Methods analyse:
 //------------------------------------------------------------------------------
           $call = substr($tag_info->tag, 1);
           
@@ -710,7 +716,7 @@ class Embrace
           break;
         case '!':
 //------------------------------------------------------------------------------
-// Condidional analise:
+// Condidional analyse:
 //------------------------------------------------------------------------------
           if (empty($tag_info->inner))
             break;
@@ -733,7 +739,7 @@ class Embrace
           
           static::$debug = FALSE;
           
-          $found_info = $this->analise($ref_tag_info, $context);
+          $found_info = $this->analyse($ref_tag_info, $context);
           
           static::$debug = $_debug;
           
@@ -749,9 +755,9 @@ class Embrace
     
     if ($info instanceof Embrace)
       $info = $info->render();
-    
+              
     if (!empty($info))
-      $info = ltrim($info, '\n\r');
+      $info = ltrim($info, "\n\r");
     
     if (!empty($info))
       $info = rtrim($info);
