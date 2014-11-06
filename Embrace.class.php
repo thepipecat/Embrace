@@ -101,6 +101,9 @@ class Embrace
   private $compiled = NULL;     // Compiled content.
   private $cached = NULL;       // Cache colected content.
   private $cache_life = 86400;  // Defaults cache life to ONE day.
+  private $cache_dir  = NULL;   // Cache files directory.
+  private $cache_file = NULL;   // Cache file name. AUTO GENERATED
+  private $cache_path = NULL;   // Cache file path. AUTO GENERATED
   
   private $parent = NULL;       // Parent Embrace instance.
   
@@ -219,14 +222,14 @@ class Embrace
     if (!is_string($delimiters))
       throw new Exception(__('Invalid delimiter type.'));
     
-    $delimiters_found = explode(self::DELIMITER_SEPARATOR, $delimiters);
+    $delimiters_found = explode(static::DELIMITER_SEPARATOR, $delimiters);
     
     if (count($delimiters_found) !== 2)
       throw new Exception(__('Invalid delimiter count.'));
     
     array_walk($delimiters_found, 'trim');
     
-    $this->delimiter = implode(self::DELIMITER_SEPARATOR, $delimiters_found);
+    $this->delimiter = implode(static::DELIMITER_SEPARATOR, $delimiters_found);
   }
   
   /**
@@ -259,7 +262,7 @@ class Embrace
   }
   
   /**
-   * Define parent Embrace cache police.
+   * Define parent Embrace cache policy.
    * 
    * @param boolean $value
    */
@@ -314,7 +317,7 @@ class Embrace
     if (empty($context) || !is_object($context))
       $context = &$this;
     
-    $delimiters = explode(self::DELIMITER_SEPARATOR, $this->delimiter);
+    $delimiters = explode(static::DELIMITER_SEPARATOR, $this->delimiter);
     
     $delimiter_open  = $delimiters[0];
     $delimiter_close = $delimiters[1];
@@ -332,7 +335,7 @@ class Embrace
         break;
       
       $analyse_tag = str_slice($analyse, $init + strlen($delimiter_open), $end);
-      $tag_args = explode(self::ARGUMENTS_SEPARATOR, $analyse_tag);
+      $tag_args = explode(static::ARGUMENTS_SEPARATOR, $analyse_tag);
       
       $tag_open = array_shift($tag_args);
       $tag_logical = NULL;
@@ -395,10 +398,11 @@ class Embrace
       
       $tag = str_slice($analyse, $init, $end);
       
-      $tag_info = array (
+      $tag_info = (object) array (
         'init'    => ($init + $last_end),
         'length'  => strlen($tag),
         'tag'     => $tag_open,
+        'tag_n'   => strtolower($tag_open),
         'full'    => $tag,
         'inner'   => rtrim($tag_inner), // Strip line end
         'replace' => '',
@@ -406,21 +410,20 @@ class Embrace
       );
       
       if (!empty($tag_args))
-        $tag_info['args'] = $tag_args;
+        $tag_info->args = $tag_args;
       
-      $tag_lower = strtolower($tag_info['tag']);
-      
-      if ($tag_lower === 'literal')
-        $tag_info['literal'] = $tag_info['inner'];
+      if ($tag_info->tag_n === 'literal')
+        $tag_info->literal = $tag_info->inner;
       else
-        $tag_info['replace'] = $this->analyse($tag_info, $context);
+        $tag_info->replace = $this->analyse($tag_info, $context);
       
-      if ($tag_lower === 'include')
-        $tag_info['cache'] = $tag_info['full'];
-      else
-        $tag_info['cache'] = $tag_info['replace'];
-      
-      unset ($tag_lower);
+      if (!isset($tag_info->cache))
+      {
+        if ($tag_info->tag_n === 'include')
+          $tag_info->cache = $tag_info->full;
+        else
+          $tag_info->cache = $tag_info->replace;
+      }
       
       $found[] = $tag_info;
       
@@ -435,29 +438,32 @@ class Embrace
   /**
    * Analyse tag and return relative context content.
    * 
-   * @param array|object $tag_info
-   * - "init"  Initial integer position.
-   * - "end"   Ending integer position.
-   * - "tag"   Tag opening string.
-   * - "args"  Opening arguments array.
-   * - "full"  All tag content string.
-   * - "inner" Inner tag content string.
+   * @param object $tag_info
+   * - "init"      Initial integer position.
+   * - "end"       Ending integer position.
+   * - "tag"       Tag opening string.
+   * - "tag_n"     Tag name normalized string.
+   * - "args"      Opening arguments array.
+   * - "full"      All tag content string.
+   * - "inner"     Inner tag content string.
+   * - "replace"   Final replacement content string.
+   * - "logical"   Logical structure comparison, if has:
+   * -- "operator" Kind of logical operation, e.g. === (EQ).
+   * -- "than"     Right side operand for comparison.
    * @param object $context
    * @return string
    */
-  public function analyse ($tag_info, &$context = NULL)
+  public function analyse (&$tag_info, &$context = NULL)
   {
-    if (empty($tag_info) || (!is_object($tag_info) && !is_array($tag_info)))
+    if (empty($tag_info) || !is_object($tag_info))
       return NULL;
-    
-    if (is_array($tag_info))
-      $tag_info = (object) $tag_info;
     
     if (empty($context) || !is_object($context))
       $context = &$this;
     
-    $info = '';
-    
+//------------------------------------------------------------------------------
+// Parentage check first:
+//------------------------------------------------------------------------------
     if (!empty($this->parent))
     {
       $info = $this->parent->analyse($tag_info);
@@ -466,12 +472,82 @@ class Embrace
         return $info;
     }
     
-    $tag_n = strtolower($tag_info->tag);
+    $info = '';
+    $me = &$this;
+    $on_debug = static::$debug;
     
-    $control_char = $tag_info->tag[0];
+    $__process_var = function & (&$info, &$context) use ($tag_info, $me, $on_debug)
+    {
+      // $__process_var :: BEGIN
+      if (!empty($info))
+      {
+        if (!empty($tag_info->inner))
+        {
+          if (is_array($info) || is_object($info))
+          {
+            $index = 0;
+            $total = count($info);
+
+            $return = '';
+
+            foreach ($info as $name => $value)
+            {
+              $inner_context = clone ($context);
+
+              $inner_context->index = $index;
+              $inner_context->name  = $name;
+              $inner_context->value = $value;
+              $inner_context->last  = ($index + 1 >= $total) ? 1 : 0;
+
+              $return .= $me->compile($tag_info->inner, $inner_context);
+
+              $index++;
+            }
+
+            return $return;
+          }
+          else
+          {
+            return $me->compile($tag_info->inner, $context);
+          }
+        }
+        else
+        {
+          if (!(is_array($info) || is_object($info)))
+            return $info;
+          elseif ($info instanceof Embrace)
+          {
+            $info->setParent($me);
+
+            return $info;
+          }
+        }
+      }
+      elseif ($on_debug)
+        return sprintf(__('%s not found'), print_r($info));
+      // $__process_var :: END
+    };
+    
+    $__normalize_output = function ($info)
+    {
+      // $__normalize_output :: BEGIN
+      if ($info instanceof Embrace)
+        $info = $info->render();
+
+      if (!empty($info))
+        $info = ltrim($info, "\n\r");
+
+      if (!empty($info))
+        $info = rtrim($info);
+      
+      return $info;
+      // $__normalize_output :: END
+    };
+
+    $tag_n = $tag_info->tag_n;
     
 //------------------------------------------------------------------------------
-// [[include:{file}]]
+// [[include:{file}:{cache-policy}]]
 //------------------------------------------------------------------------------
     if ($tag_n === 'include')
     {
@@ -496,18 +572,94 @@ class Embrace
       if (!file_exists($embrace_file_n))
         throw new Exception(sprintf(__('Template file "%s" not found.'), $embrace_file_n));
       
-      $embrace = new Embrace($embrace_file_n);
+      $cache_policy = 'included';
       
-      $embrace->setParent($this);
-      $embrace->setCache(!in_array('no-cache', $tag_info->args));
+      $embrace = new Embrace($embrace_file_n);
       
       unset ($embrace_file_n);
       
-      $info = $embrace->render();
+      $embrace_cache_file = $embrace->cacheFilePath();
+      
+      if (in_array('no-cache', $tag_info->args))
+        $cache_policy = 0;
+      elseif (isset($tag_info->args[1]))
+        $cache_policy = $tag_info->args[1] + 0;
+      
+      if ($cache_policy !== 'included')
+      {
+        if ($cache_policy === 0)
+          $embrace->setCache(FALSE);
+        
+        $tag_info->cache = $tag_info->full;
+      }
+      
+      $now = time();
+
+      if (file_exists($embrace_cache_file) && (filemtime($embrace_cache_file) + $cache_policy) > $now)
+        $info = file_get_contents($embrace_cache_file);
+      else
+      {
+        $embrace->setParent($this);
+        
+        $info = $embrace->render();
+      }
       
       unset ($embrace);
       
-      return $info;
+      return $__normalize_output ( $info );
+    }
+
+//------------------------------------------------------------------------------
+// [[cache:{policy(integer|"none")}:{naming(string)}]]{content}[[/cache]]
+//------------------------------------------------------------------------------
+    if ($tag_n === 'cache' && !empty($tag_info->inner))
+    {
+      $cache_content = $__normalize_output ( $__process_var($tag_info->inner, $context) );
+      
+      if ($this->cache === FALSE)
+        return $cache_content;
+      
+      $cache_policy = $this->cache_life;
+      $cache_naming = NULL;
+      
+      if (!empty($tag_info->args))
+      {
+        foreach ($tag_info->args as $cache_arg)
+        {
+          if (is_numeric($cache_arg) || $cache_arg === 'none')
+            $cache_policy = $cache_arg + 0;
+          elseif (is_string($cache_arg))
+            $cache_naming = trim($cache_arg);
+        }
+      }
+      
+      if (empty($cache_naming))
+        $cache_naming = md5($tag_info->inner);
+      
+      $path_info = pathinfo( $this->cacheFilePath() );
+      
+      $cache_dir  = $path_info['dirname'];
+      $cache_file = $path_info['filename'] . '-' . $cache_naming . static::$cache_append;
+      $cache_path = $cache_dir . DS . $cache_file;
+      $ref_dir = get_relative_path($cache_dir, dirname($this->file));
+      
+      unset ($path_info);
+
+      if (!is_writable($cache_dir))
+        throw new Exception(sprintf(__('Unable to write cache file "%s".'), $cache_path));
+
+      unset ($cache_dir);
+
+      file_put_contents($cache_path, $tag_info->inner, LOCK_EX);
+
+      $tag_info->cache = '[[include:' . $ref_dir .  DS . $cache_file . ':' . $cache_policy . ']]';
+
+      unset ($cache_path);
+      unset ($cache_file);
+      unset ($cache_naming);
+      unset ($cache_policy);
+      
+      return $cache_content;
     }
     
 //------------------------------------------------------------------------------
@@ -522,19 +674,21 @@ class Embrace
       
       eval ($tag_info->inner);
       
-      $info = ob_get_clean();
+      $info = $__normalize_output ( ob_get_clean() );
       
       return $info;
     }
+    
+    $control_char = $tag_info->tag[0];
     
     if (ctype_alpha($control_char) || $control_char === '$')
     {
 //------------------------------------------------------------------------------
 // Variable analysis:
 //------------------------------------------------------------------------------
-      $tag = explode(self::ATTRIBUTE_SEPARATOR, ($control_char === '$' ?
-                                                 str_replace($tag_info->tag, 1) :
-                                                 $tag_info->tag));
+      $tag = explode(static::ATTRIBUTE_SEPARATOR, ($control_char === '$' ?
+                                                   str_replace($tag_info->tag, 1) :
+                                                   $tag_info->tag));
       
       if (isset($context->{$tag[0]}))
       {
@@ -545,60 +699,6 @@ class Embrace
         if (is_array($found_info) || is_object($found_info))
         {
           $found_info = (object) $found_info;
-          
-          $me = &$this;
-          
-          $__process_var = function & (&$info, &$context) use ($tag_info, $me)
-          {
-            // $__process_var :: BEGIN
-            if (!empty($info))
-            {
-              if (!empty($tag_info->inner))
-              {
-                if (is_array($info) || is_object($info))
-                {
-                  $index = 0;
-                  $total = count($info);
-                  
-                  $return = '';
-
-                  foreach ($info as $name => $value)
-                  {
-                    $inner_context = clone ($context);
-
-                    $inner_context->index = $index;
-                    $inner_context->name  = $name;
-                    $inner_context->value = $value;
-                    $inner_context->last  = ($index + 1 >= $total) ? 1 : 0;
-
-                    $return .= $me->compile($tag_info->inner, $inner_context);
-
-                    $index++;
-                  }
-                  
-                  return $return;
-                }
-                else
-                {
-                  return $me->compile($tag_info->inner, $context);
-                }
-              }
-              else
-              {
-                if (!(is_array($info) || is_object($info)))
-                  return $info;
-                elseif ($info instanceof Embrace)
-                {
-                  $info->setParent($me);
-
-                  return $info;
-                }
-              }
-            }
-            elseif (static::$debug)
-              return __('(not found)');
-            // $__process_var :: END
-          };
           
           $var_count = count($tag);
           
@@ -612,7 +712,7 @@ class Embrace
             {
               $var = $tag[$i];
               
-              $found_info = $found_info->{$var};
+              $found_info = is_array($found_info) ? $found_info[$var] : $found_info->{$var};
               
               if (!empty($found_info) && ($i + 1) < $var_count)
                 continue;
@@ -623,8 +723,6 @@ class Embrace
                 break;
             }
           }
-          
-          unset ($__process_var);
         }
         else
           $info = $found_info;
@@ -753,16 +851,7 @@ class Embrace
       }
     }
     
-    if ($info instanceof Embrace)
-      $info = $info->render();
-              
-    if (!empty($info))
-      $info = ltrim($info, "\n\r");
-    
-    if (!empty($info))
-      $info = rtrim($info);
-    
-    return $info;
+    return $__normalize_output($info);
   }
   
   /**
@@ -802,11 +891,11 @@ class Embrace
     
     foreach ($embrace_found as $embraced)
     {
-      $replace = $embraced['replace'];
+      $replace = $embraced->replace;
       
-      if (!empty($embraced['args']))
+      if (!empty($embraced->args))
       {
-        foreach ($embraced['args'] as $arg)
+        foreach ($embraced->args as $arg)
         {
           if (function_exists($arg))
             $replace = call_user_func($arg, $replace);
@@ -817,16 +906,16 @@ class Embrace
       
       if (!empty($replace))
         $replace = $this->compile($replace, $context);
-      elseif (!empty($embraced['literal']))
-        $replace = $embraced['literal'];
+      elseif (isset($embraced->literal))
+        $replace = $embraced->literal;
       
-      $length = $embraced['length'];
-      $init = $embraced['init'] + $diff;
+      $length = $embraced->length;
+      $init = $embraced->init + $diff;
       
       if (isset($tocache) && is_string($tocache))
       {
-        $cache = $embraced['cache'];
-        $cache_init = $embraced['init'] + $cache_diff;
+        $cache = $embraced->cache;
+        $cache_init = $embraced->init + $cache_diff;
         
         $tocache = substr_replace($tocache, $cache, $cache_init, $length);
 
@@ -842,7 +931,7 @@ class Embrace
   }
   
   /**
-   * Define cache instance police.
+   * Define cache instance policy.
    * 
    * @param boolean $value
    */
@@ -858,7 +947,7 @@ class Embrace
   }
   
   /**
-   * Return cache instance police.
+   * Return cache instance policy.
    * 
    * @return boolean
    */
@@ -870,24 +959,19 @@ class Embrace
   /**
    * Verify if has cached content.
    * 
+   * @param type $template_file
    * @return boolean
    * @throws Exception
    */
-  protected function cached ()
+  protected function cached ($template_file = NULL)
   {
-    if (!$this->cache)
+    if (!$this->cache || (empty($this->file) && empty($template_file)))
       return FALSE;
     
-    if (empty($this->file))
-      return FALSE;
+    if (empty($template_file))
+      $template_file = $this->file;
     
-    $file_dir  = dirname($this->file);
-    $file_name = basename($this->file, '.php');
-    
-    $cache_file = $file_dir . DS . static::$cache_prepend . $file_name . static::$cache_append;
-    
-    unset ($file_name);
-    unset ($file_dir);
+    $cache_file = $this->cacheFilePath($template_file);
     
     if (!file_exists($cache_file))
       return FALSE;
@@ -929,19 +1013,78 @@ class Embrace
     if (empty($cache_content))
       $cache_content = $this->compiled;
     
-    $file_dir  = dirname($this->file);
-    $file_name = basename($this->file, '.php');
+    $cache_file = $this->cacheFilePath();
     
-    $cache_file = $file_dir . DS . static::$cache_prepend . $file_name . static::$cache_append;
-    
-    unset ($file_name);
-    
-    if (!is_writable($file_dir))
-      throw new Exception(sprintf(__('Cache directory "%s" is not writeable.'), $file_dir));
-    
-    unset ($file_dir);
+    if (!is_writable($this->cache_dir))
+      throw new Exception(sprintf(__('Cache directory "%s" is not writeable.'), $this->cache_dir));
     
     return file_put_contents($cache_file, $cache_content, LOCK_EX) === FALSE ? FALSE : TRUE;
+  }
+  
+  /**
+   * Returns cache file path for current template.
+   * 
+   * @param string $template_file
+   * @return string
+   * @throws Exception
+   */
+  public function cacheFilePath ($template_file = NULL)
+  {
+    if (!empty($this->cache_path))
+      return $this->cache_path;
+    
+    if (empty($template_file) && empty($this->file))
+      throw new Exception(__('Template file not defined.'));
+    
+    if (empty($template_file))
+      $template_file = $this->file;
+    else
+      $template_file = realpath($template_file);
+    
+    $file_info = pathinfo($template_file);
+    
+    $cache_dir = $this->cacheDir();
+    
+    if (empty($cache_dir))
+      $this->setCacheDir($file_info['dirname']);
+    
+    $this->cache_file = static::$cache_prepend . $file_info['filename'] . static::$cache_append;
+    $this->cache_path = $cache_dir . DS . $this->cache_file;
+    
+    return $this->cache_path;
+  }
+  
+  /**
+   * Return the cache directory.
+   * 
+   * @return string
+   */
+  public function cacheDir ()
+  {
+    if (!empty($this->parent))
+      $this->cache_dir = $this->parent->cacheDir();
+    
+    return $this->cache_dir;
+  }
+  
+  /**
+   * Defines the cache directory.
+   * 
+   * @param string $dir_path
+   * @throws Exception
+   */
+  public function setCacheDir ($dir_path)
+  {
+    if (file_exists($dir_path) && !is_dir($dir_path))
+      throw new Exception(__('File path exists and not is a valid directory.'));
+    
+    if (!is_dir($dir_path) && !mkdir($dir_path, 0777, TRUE))
+      throw new Exception(__('Could not create cache dir.'));
+    
+    if (!is_writable($dir_path))
+      throw new Exception(__('Cache directory not is writable.'));
+    
+    $this->cache_dir = $dir_path;
   }
   
   /**
@@ -979,6 +1122,51 @@ class Embrace
 //------------------------------------------------------------------------------
 // Support functions:
 //------------------------------------------------------------------------------
+
+if (!function_exists('get_relative_path'))
+{
+  function get_relative_path ($path_from, $path_to)
+  {
+    if (empty($path_from))
+      throw new Exception(__('Path origin must be defined.'));
+    
+    if (empty($path_to))
+      throw new Exception(__('Path destiny must be defined.'));
+    
+    $DS = DIRECTORY_SEPARATOR;
+    
+    $path_from_n = trim($path_from, "\t\n\r\0\x0B" . $DS);
+    $path_to_n   = trim($path_to,   "\t\n\r\0\x0B" . $DS);
+    
+    unset ($path_from);
+    unset ($path_to);
+    
+    if (strpos($path_from_n, $path_to_n) === 0)
+      return substr($path_from_n, (strlen($path_to_n) + 1));
+
+    $relative_path    = array ();
+    $path_from_pieces = explode($DS, $path_from_n);
+    $path_to_pieces   = explode($DS, $path_to_n);
+
+    foreach ($path_to_pieces as $index => $part)
+    {
+      if (isset($path_from_pieces[$index]) && $path_from_pieces[$index] == $part)
+        continue;
+
+      $relative_path[] = '..';
+    }
+
+    foreach ($path_from_pieces as $index => $part)
+    {
+      if (isset($path_to_pieces[$index]) && $path_to_pieces[$index] == $part)
+        continue;
+
+      $relative_path[] = $part;
+    }
+
+    return implode($DS, $relative_path);
+  }
+}
 
 if (!function_exists('ctype_alpha'))
 {
