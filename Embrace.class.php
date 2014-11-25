@@ -131,12 +131,14 @@ class Embrace
   
   public function &__get ($name)
   {
+    $value = NULL;
+    
     if (isset($this->data[$name]))
-      return $this->data[$name];
+      $value = &$this->data[$name];
     else if (isset($this->call[$name]))
-      return $this->call[$name];
+      $value = &$this->call[$name];
       
-    return NULL;
+    return $value;
   }
   
   public function __set ($name, $value)
@@ -383,7 +385,7 @@ class Embrace
 //------------------------------------------------------------------------------
 // Verify if has close tag.
 //------------------------------------------------------------------------------
-      $close_init = strpos($analyse, $delimiter_open . '/' . str_replace($ctrl_chars, '', $tag_open), $end);
+      $close_init = strpos($analyse, $delimiter_open . '/' . str_replace($ctrl_chars, '', $tag_open) . $delimiter_close, $end);
       
       $tag_inner = NULL;
       
@@ -479,11 +481,12 @@ class Embrace
     $__process_var = function & (&$info, &$context) use ($tag_info, $me, $on_debug)
     {
       // $__process_var :: BEGIN
-      if (!empty($info))
+      if (isset($info))
       {
-        if (!empty($tag_info->inner))
+        if (!empty($tag_info->inner) && empty($tag_info->logical))
         {
-          if (is_array($info) || is_object($info))
+          if ((is_array($info) || is_object($info)) &&
+              (empty($tag_info->args) || !in_array('no-loop', $tag_info->args)))
           {
             $index = 0;
             $total = count($info);
@@ -525,6 +528,8 @@ class Embrace
       }
       elseif ($on_debug)
         return sprintf(__('%s not found'), print_r($info));
+      else
+        return $info;
       // $__process_var :: END
     };
     
@@ -734,7 +739,7 @@ class Embrace
           if ($info instanceof Embrace)
             throw new Exception(__('Embrace class could not be used in logical comparison.'));
           
-          if (!is_string($info) && !is_numeric($info))
+          if (!is_string($info) && !is_numeric($info) && !is_null($info))
             throw new Exception(__('Variable kind could not be used in logical comparison.'));
           
           $operator = $tag_info->logical['operator'];
@@ -742,9 +747,13 @@ class Embrace
           
           if (is_numeric($info))
             $info = $info + 0;
+          elseif (is_null($info))
+            $info = 0;
           
           if (is_numeric($than))
             $than = $than + 0;
+          elseif (is_null($than))
+            $than = 0;
           
           $logical_pass = FALSE;
           
